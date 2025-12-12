@@ -1,446 +1,312 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Particles: Gesture vs Image</title>
-    <style>
-        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; }
-        .input_video { display: none; }
-        
-        /* UI Overlay */
-        #ui-overlay {
-            position: absolute;
-            bottom: 30px;
-            width: 100%;
-            text-align: center;
-            color: rgba(255, 255, 255, 0.6);
-            pointer-events: none;
-            z-index: 10;
-        }
-        
-        h1 { margin: 0; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; font-size: 1.2rem; }
-        p { font-size: 0.9rem; margin-top: 5px; }
-        .highlight { color: #ff4757; font-weight: bold; }
+<meta charset="UTF-8">
+<title>Gesture & Image Particle System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-        /* Status Pill */
-        #gesture-status {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            padding: 8px 16px;
-            background: rgba(20, 20, 20, 0.8);
-            border-radius: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #aaa;
-            font-size: 0.8rem;
-            transition: all 0.3s;
-        }
-        #gesture-status.active {
-            background: rgba(255, 71, 87, 0.2);
-            color: #ff4757;
-            border-color: #ff4757;
-            box-shadow: 0 0 15px rgba(255, 71, 87, 0.3);
-        }
+<style>
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #050505;
+    font-family: system-ui, sans-serif;
+}
+.input_video { display: none; }
 
-        /* Control Panel */
-        #controls {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 20;
-            display: flex;
-            gap: 10px;
-        }
+#controls {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 10;
+    display: flex;
+    gap: 10px;
+}
 
-        .btn {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            padding: 10px 15px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            backdrop-filter: blur(5px);
-            transition: 0.2s;
-        }
-        .btn:hover { background: rgba(255, 255, 255, 0.25); }
-        .btn.active { background: #ff4757; border-color: #ff4757; }
+.btn {
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.1);
+    color: white;
+    cursor: pointer;
+}
+.btn.active { background: #ff4757; border-color: #ff4757; }
 
-        input[type="file"] { display: none; }
-    </style>
-    
-    <!-- Dependencies -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-    </script>
+#status {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    color: #aaa;
+    padding: 8px 14px;
+    background: rgba(20,20,20,0.8);
+    border-radius: 20px;
+}
+
+#overlay {
+    position: absolute;
+    bottom: 30px;
+    width: 100%;
+    text-align: center;
+    color: rgba(255,255,255,0.7);
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
 </head>
+
 <body>
 
-    <video class="input_video"></video>
-    
-    <!-- Control Panel -->
-    <div id="controls">
-        <button id="btn-gesture" class="btn active" onclick="setMode('gesture')">👐 Gesture Mode</button>
-        <button id="btn-image" class="btn" onclick="document.getElementById('file-input').click()">🖼️ Upload Image</button>
-        <input type="file" id="file-input" accept="image/*">
-    </div>
+<video class="input_video"></video>
 
-    <div id="gesture-status">waiting for hands...</div>
+<div id="controls">
+    <button id="btnGesture" class="btn active">Gesture Mode</button>
+    <button id="btnImage" class="btn">Upload Image</button>
+    <input type="file" id="fileInput" accept="image/*" hidden>
+</div>
 
-    <div id="ui-overlay">
-        <h1 id="mode-title">Gesture Mode</h1>
-        <p id="mode-desc">Make a <span class="highlight">Heart Shape 🫶</span> to morph the particles.</p>
-    </div>
+<div id="status">Waiting for hands…</div>
 
-    <script type="module">
-        import * as THREE from 'three';
+<div id="overlay">
+    <h2 id="modeTitle">Gesture Mode</h2>
+    <p id="modeDesc">Make a 🫶 heart gesture</p>
+</div>
 
-        // --- Configuration ---
-        const CONFIG = {
-            particleCount: 25000, // Increased count for better image resolution
-            baseSize: 0.15,
-            lerpSpeed: 0.08,
-            heartColor: new THREE.Color(0xff0044),
-            cloudColor: new THREE.Color(0x00aaff)
-        };
+<script type="module">
+import * as THREE from "three";
 
-        // --- State Management ---
-        const state = {
-            mode: 'gesture', // 'gesture' or 'image'
-            isHeartGesture: false,
-            // Arrays to store where particles should go in Image Mode
-            imagePositions: new Float32Array(CONFIG.particleCount * 3),
-            imageColors: new Float32Array(CONFIG.particleCount * 3),
-            hasImage: false
-        };
+/* ================= CONFIG ================= */
+const CONFIG = {
+    COUNT: 25000,
+    SIZE: 0.14,
+    LERP: 0.08,
+    HEART_COLOR: new THREE.Color(0xff0044),
+    CLOUD_COLOR: new THREE.Color(0x00aaff)
+};
 
-        // --- Three.js Setup ---
-        const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x050505, 0.02);
+/* ================= STATE ================= */
+const state = {
+    mode: "gesture", // gesture | image
+    heart: false,
+    imageReady: false,
+    imagePos: new Float32Array(CONFIG.COUNT * 3),
+    imageCol: new Float32Array(CONFIG.COUNT * 3)
+};
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 30;
+/* ================= THREE ================= */
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x050505, 0.02);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1000);
+camera.position.z = 30;
 
-        // --- Texture ---
-        function createSprite() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 32; canvas.height = 32;
-            const ctx = canvas.getContext('2d');
-            const grad = ctx.createRadialGradient(16,16,0,16,16,16);
-            grad.addColorStop(0, 'rgba(255,255,255,1)');
-            grad.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0,0,32,32);
-            return new THREE.CanvasTexture(canvas);
-        }
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
 
-        // --- Particles System ---
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(CONFIG.particleCount * 3);
-        const targetPositions = new Float32Array(CONFIG.particleCount * 3);
-        const currentColors = new Float32Array(CONFIG.particleCount * 3);
-        const targetColors = new Float32Array(CONFIG.particleCount * 3);
+/* ================= PARTICLES ================= */
+const geo = new THREE.BufferGeometry();
+const pos = new Float32Array(CONFIG.COUNT * 3);
+const targetPos = new Float32Array(CONFIG.COUNT * 3);
+const col = new Float32Array(CONFIG.COUNT * 3);
+const targetCol = new Float32Array(CONFIG.COUNT * 3);
 
-        // Initial Random Setup
-        for(let i=0; i<CONFIG.particleCount; i++) {
-            positions[i*3] = (Math.random()-0.5) * 60;
-            positions[i*3+1] = (Math.random()-0.5) * 60;
-            positions[i*3+2] = (Math.random()-0.5) * 60;
-            
-            // Default Blue
-            currentColors[i*3] = CONFIG.cloudColor.r;
-            currentColors[i*3+1] = CONFIG.cloudColor.g;
-            currentColors[i*3+2] = CONFIG.cloudColor.b;
-        }
+for (let i = 0; i < CONFIG.COUNT * 3; i++) {
+    pos[i] = (Math.random() - 0.5) * 60;
+    col[i] = CONFIG.CLOUD_COLOR.toArray()[i % 3];
+}
 
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(currentColors, 3));
+geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
 
-        const material = new THREE.PointsMaterial({
-            size: CONFIG.baseSize,
-            map: createSprite(),
-            vertexColors: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            transparent: true
-        });
+function sprite() {
+    const c = document.createElement("canvas");
+    c.width = c.height = 32;
+    const g = c.getContext("2d");
+    const r = g.createRadialGradient(16,16,0,16,16,16);
+    r.addColorStop(0,"white");
+    r.addColorStop(1,"transparent");
+    g.fillStyle = r;
+    g.fillRect(0,0,32,32);
+    return new THREE.CanvasTexture(c);
+}
 
-        const particles = new THREE.Points(geometry, material);
-        scene.add(particles);
+const mat = new THREE.PointsMaterial({
+    size: CONFIG.SIZE,
+    map: sprite(),
+    vertexColors: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    transparent: true
+});
 
+const points = new THREE.Points(geo, mat);
+scene.add(points);
 
-        // --- Image Processing Logic ---
-        function processImage(file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const img = new Image();
-                img.onload = () => {
-                    // Create a canvas to read pixels
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    
-                    // We need to scale the image so the number of pixels ~ number of particles
-                    // sqrt(25000) is approx 158. So a 158x158 image is ideal.
-                    const aspectRatio = img.width / img.height;
-                    const w = 160 * aspectRatio;
-                    const h = 160; 
+/* ================= SHAPES ================= */
+function cloud() {
+    const r = 18 * Math.cbrt(Math.random());
+    const t = Math.random() * Math.PI * 2;
+    const p = Math.acos(2 * Math.random() - 1);
+    return {
+        x: r * Math.sin(p) * Math.cos(t),
+        y: r * Math.sin(p) * Math.sin(t),
+        z: r * Math.cos(p)
+    };
+}
 
-                    canvas.width = w;
-                    canvas.height = h;
-                    ctx.drawImage(img, 0, 0, w, h);
-                    
-                    const imgData = ctx.getImageData(0, 0, w, h).data;
-                    const pixelCount = w * h;
-                    
-                    // Shuffle indices to avoid "scanline" effect when particles move
-                    const indices = Array.from({length: CONFIG.particleCount}, (_, i) => i);
-                    indices.sort(() => Math.random() - 0.5);
+function heart(u, v) {
+    const t = u * Math.PI * 2;
+    return {
+        x: 8 * Math.pow(Math.sin(t), 3),
+        y: 5 * Math.cos(t) - 2 * Math.cos(2*t) - Math.cos(3*t),
+        z: (v - 0.5) * 5
+    };
+}
 
-                    let pIndex = 0;
-                    for (let y = 0; y < h; y++) {
-                        for (let x = 0; x < w; x++) {
-                            if(pIndex >= CONFIG.particleCount) break;
+/* ================= TARGET GENERATORS ================= */
+function genCloud() {
+    for (let i = 0; i < CONFIG.COUNT; i++) {
+        const p = cloud();
+        targetPos.set([p.x, p.y, p.z], i*3);
+        targetCol.set(CONFIG.CLOUD_COLOR.toArray(), i*3);
+    }
+}
 
-                            const i = (y * Math.floor(w) + x) * 4;
-                            const r = imgData[i] / 255;
-                            const g = imgData[i+1] / 255;
-                            const b = imgData[i+2] / 255;
-                            const alpha = imgData[i+3];
+function genHeart() {
+    for (let i = 0; i < CONFIG.COUNT; i++) {
+        const p = heart(i / CONFIG.COUNT, Math.random());
+        targetPos.set([p.x, p.y, p.z], i*3);
+        targetCol.set(CONFIG.HEART_COLOR.toArray(), i*3);
+    }
+}
 
-                            // Skip transparent or very dark pixels
-                            if (alpha > 128 && (r+g+b) > 0.1) {
-                                const particleIdx = indices[pIndex];
-                                
-                                // Map 2D x,y to 3D centered coordinates
-                                // Scale factor (0.15) spreads them out in 3D space
-                                state.imagePositions[particleIdx * 3] = (x - w/2) * 0.15;
-                                state.imagePositions[particleIdx * 3 + 1] = -(y - h/2) * 0.15; // Invert Y
-                                state.imagePositions[particleIdx * 3 + 2] = 0;
+function genImage() {
+    targetPos.set(state.imagePos);
+    targetCol.set(state.imageCol);
+}
 
-                                state.imageColors[particleIdx * 3] = r;
-                                state.imageColors[particleIdx * 3 + 1] = g;
-                                state.imageColors[particleIdx * 3 + 2] = b;
+/* ================= IMAGE PROCESS ================= */
+function processImage(file) {
+    const img = new Image();
+    img.onload = () => {
+        const h = 160;
+        const w = Math.floor(160 * (img.width / img.height));
 
-                                pIndex++;
-                            }
-                        }
-                    }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
 
-                    // Hide unused particles (move them far away or scale 0)
-                    for (let k = pIndex; k < CONFIG.particleCount; k++) {
-                        const idx = indices[k];
-                        state.imagePositions[idx*3] = 1000; // Far away
-                    }
+        const data = ctx.getImageData(0,0,w,h).data;
+        let idx = 0;
 
-                    state.hasImage = true;
-                    setMode('image');
-                };
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
+        for (let y = 0; y < h && idx < CONFIG.COUNT; y++) {
+            for (let x = 0; x < w && idx < CONFIG.COUNT; x++) {
+                const i = (y*w + x) * 4;
+                const r = data[i]/255, g = data[i+1]/255, b = data[i+2]/255, a = data[i+3];
+                if (a < 128) continue;
 
-        document.getElementById('file-input').addEventListener('change', (e) => {
-            if(e.target.files && e.target.files[0]) {
-                processImage(e.target.files[0]);
-            }
-        });
+                const lum = (r+g+b)/3;
+                state.imagePos[idx*3] = (x - w/2)*0.15;
+                state.imagePos[idx*3+1] = -(y - h/2)*0.15;
+                state.imagePos[idx*3+2] = (lum - 0.5) * 8;
 
-        // --- Mode Switching ---
-        window.setMode = (modeName) => {
-            state.mode = modeName;
-            
-            const btnG = document.getElementById('btn-gesture');
-            const btnI = document.getElementById('btn-image');
-            const title = document.getElementById('mode-title');
-            const desc = document.getElementById('mode-desc');
-            const status = document.getElementById('gesture-status');
-
-            if(modeName === 'image') {
-                btnG.classList.remove('active');
-                btnI.classList.add('active');
-                title.innerText = "Image Mode";
-                desc.innerText = "Reconstructing uploaded image...";
-                status.style.display = 'none';
-            } else {
-                btnG.classList.add('active');
-                btnI.classList.remove('active');
-                title.innerText = "Gesture Mode";
-                desc.innerHTML = "Make a <span class='highlight'>Heart Shape 🫶</span> to morph.";
-                status.style.display = 'block';
-            }
-        };
-
-        // --- Math Generators for Gesture Mode ---
-        function getHeartPoint(u, v) {
-            const r = 10;
-            const t = u * Math.PI * 2;
-            let x = 16 * Math.pow(Math.sin(t), 3);
-            let y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
-            let z = (v - 0.5) * 5; 
-            return { x: x * 0.5, y: y * 0.5, z: z };
-        }
-
-        function getCloudPoint() {
-            const r = 18 * Math.cbrt(Math.random()); 
-            const theta = Math.random() * 2 * Math.PI;
-            const phi = Math.acos(2 * Math.random() - 1);
-            return {
-                x: r * Math.sin(phi) * Math.cos(theta),
-                y: r * Math.sin(phi) * Math.sin(theta),
-                z: r * Math.cos(phi)
-            };
-        }
-
-        // --- Animation Loop ---
-        function updateLogic() {
-            // Determine Targets based on Mode
-            if (state.mode === 'image' && state.hasImage) {
-                // Use Image Data
-                for(let i=0; i<CONFIG.particleCount; i++) {
-                    targetPositions[i*3] = state.imagePositions[i*3];
-                    targetPositions[i*3+1] = state.imagePositions[i*3+1];
-                    targetPositions[i*3+2] = state.imagePositions[i*3+2];
-                    
-                    targetColors[i*3] = state.imageColors[i*3];
-                    targetColors[i*3+1] = state.imageColors[i*3+1];
-                    targetColors[i*3+2] = state.imageColors[i*3+2];
-                }
-            } 
-            else {
-                // Gesture Mode
-                const destColor = state.isHeartGesture ? CONFIG.heartColor : CONFIG.cloudColor;
-                
-                for(let i=0; i<CONFIG.particleCount; i++) {
-                    // Update Positions roughly every frame? 
-                    // To save performance, we can compute this procedurally in the lerp step, 
-                    // but for code clarity we do it here.
-                    let p;
-                    if(state.isHeartGesture) {
-                        // We use index as seed for consistent shapes
-                        p = getHeartPoint((i/CONFIG.particleCount), Math.random());
-                        // Add some noise
-                        p.x += (Math.random()-0.5);
-                        p.y += (Math.random()-0.5);
-                        p.z += (Math.random()-0.5);
-                    } else {
-                        // Random Cloud
-                        p = getCloudPoint();
-                    }
-                    
-                    targetPositions[i*3] = p.x;
-                    targetPositions[i*3+1] = p.y;
-                    targetPositions[i*3+2] = p.z;
-
-                    targetColors[i*3] = destColor.r;
-                    targetColors[i*3+1] = destColor.g;
-                    targetColors[i*3+2] = destColor.b;
-                }
+                state.imageCol.set([r,g,b], idx*3);
+                idx++;
             }
         }
 
-        const clock = new THREE.Clock();
-
-        function animate() {
-            requestAnimationFrame(animate);
-            const time = clock.getElapsedTime();
-
-            // Run logic periodically or every frame (doing every frame for smoothness here)
-            updateLogic(); 
-
-            const pos = geometry.attributes.position.array;
-            const col = geometry.attributes.color.array;
-
-            // Rotation
-            if (state.mode === 'image') {
-                // Slight tilt for image to show 3D nature
-                scene.rotation.y = Math.sin(time * 0.5) * 0.1; 
-                scene.rotation.z = 0;
-            } else {
-                scene.rotation.y = time * 0.1;
-            }
-
-            for (let i = 0; i < CONFIG.particleCount; i++) {
-                const px = i*3, py = i*3+1, pz = i*3+2;
-                
-                // Position Interpolation
-                pos[px] += (targetPositions[px] - pos[px]) * CONFIG.lerpSpeed;
-                pos[py] += (targetPositions[py] - pos[py]) * CONFIG.lerpSpeed;
-                pos[pz] += (targetPositions[pz] - pos[pz]) * CONFIG.lerpSpeed;
-
-                // Color Interpolation
-                col[px] += (targetColors[px] - col[px]) * 0.05;
-                col[py] += (targetColors[py] - col[py]) * 0.05;
-                col[pz] += (targetColors[pz] - col[pz]) * 0.05;
-
-                // Add "life" (breathing)
-                if(!state.isHeartGesture && state.mode === 'gesture') {
-                    pos[px] += Math.sin(time * 2 + pos[py]) * 0.01;
-                }
-            }
-
-            geometry.attributes.position.needsUpdate = true;
-            geometry.attributes.color.needsUpdate = true;
-
-            renderer.render(scene, camera);
+        for (; idx < CONFIG.COUNT; idx++) {
+            state.imagePos[idx*3] = 999;
         }
 
-        // --- MediaPipe Hand Tracking ---
-        const statusDiv = document.getElementById('gesture-status');
-        
-        function onResults(results) {
-            // Only process gestures if in gesture mode
-            if (state.mode !== 'gesture') return;
+        state.imageReady = true;
+        setMode("image");
+    };
+    img.src = URL.createObjectURL(file);
+}
 
-            let detected = false;
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
-                const h1 = results.multiHandLandmarks[0];
-                const h2 = results.multiHandLandmarks[1];
-                const indexDist = Math.hypot(h1[8].x - h2[8].x, h1[8].y - h2[8].y);
-                const thumbDist = Math.hypot(h1[4].x - h2[4].x, h1[4].y - h2[4].y);
-                if (indexDist < 0.08 && thumbDist < 0.08) detected = true;
-            }
+/* ================= UI ================= */
+const btnG = document.getElementById("btnGesture");
+const btnI = document.getElementById("btnImage");
+const fileInput = document.getElementById("fileInput");
+const status = document.getElementById("status");
 
-            if (detected !== state.isHeartGesture) {
-                state.isHeartGesture = detected;
-                if(detected) {
-                    statusDiv.innerText = "HEART DETECTED ❤️";
-                    statusDiv.classList.add('active');
-                } else {
-                    statusDiv.innerText = "Hands separated";
-                    statusDiv.classList.remove('active');
-                }
-            }
-        }
+btnI.onclick = () => fileInput.click();
+fileInput.onchange = e => processImage(e.target.files[0]);
 
-        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5 });
-        hands.onResults(onResults);
+btnG.onclick = () => setMode("gesture");
 
-        const video = document.getElementsByClassName('input_video')[0];
-        const cameraUtils = new Camera(video, {
-            onFrame: async () => { await hands.send({image: video}); },
-            width: 640, height: 480
-        });
-        cameraUtils.start();
+function setMode(m) {
+    state.mode = m;
+    btnG.classList.toggle("active", m==="gesture");
+    btnI.classList.toggle("active", m==="image");
+    document.getElementById("modeTitle").innerText = m==="gesture" ? "Gesture Mode" : "Image Mode";
+    document.getElementById("modeDesc").innerText = m==="gesture" ? "Make a 🫶 heart" : "Image reconstructed";
 
-        // Resize
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth/window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+    if (m === "image") genImage();
+    else genCloud();
+}
 
-        // Start
-        animate();
+/* ================= MEDIAPIPE ================= */
+const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+hands.setOptions({ maxNumHands: 2, modelComplexity: 1 });
 
-    </script>
+hands.onResults(r => {
+    if (state.mode !== "gesture") return;
+    let detected = false;
+    if (r.multiHandLandmarks?.length === 2) {
+        const [a,b] = r.multiHandLandmarks;
+        const d1 = Math.hypot(a[8].x - b[8].x, a[8].y - b[8].y);
+        const d2 = Math.hypot(a[4].x - b[4].x, a[4].y - b[4].y);
+        detected = d1 < 0.08 && d2 < 0.08;
+    }
+    if (detected !== state.heart) {
+        state.heart = detected;
+        detected ? genHeart() : genCloud();
+        status.innerText = detected ? "❤️ Heart Detected" : "Hands separated";
+    }
+});
+
+new Camera(document.querySelector(".input_video"), {
+    onFrame: async () => hands.send({ image: document.querySelector(".input_video") }),
+    width: 640, height: 480
+}).start();
+
+/* ================= ANIMATE ================= */
+function animate() {
+    requestAnimationFrame(animate);
+    scene.rotation.y += 0.001;
+
+    for (let i = 0; i < CONFIG.COUNT*3; i++) {
+        pos[i] += (targetPos[i] - pos[i]) * CONFIG.LERP;
+        col[i] += (targetCol[i] - col[i]) * 0.05;
+    }
+
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+    renderer.render(scene, camera);
+}
+
+genCloud();
+animate();
+
+window.onresize = () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+};
+</script>
 </body>
 </html>
