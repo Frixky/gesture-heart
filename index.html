@@ -2,93 +2,113 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Interactive Particles</title>
+<title>AI Particle Shaper - Fixed</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <style>
-  body { margin: 0; overflow: hidden; background: #050505; font-family: system-ui, sans-serif; }
-  .input_video { display: none; }
+  body { margin: 0; overflow: hidden; background: #050505; font-family: 'Segoe UI', sans-serif; }
+  
+  /* --- FIXED: Video Visibility --- */
+  /* We do NOT use display: none here. We use opacity 0 and push it to the back.
+     This ensures the browser keeps decoding frames for the AI. */
+  .input_video { 
+    position: absolute; 
+    top: 0; left: 0; 
+    width: 1px; height: 1px; 
+    opacity: 0; 
+    pointer-events: none; 
+    z-index: -1;
+  }
 
-  /* UI Container */
+  /* --- UI Controls --- */
   #controls {
     position: absolute; top: 20px; left: 20px;
-    z-index: 20; display: flex; gap: 10px; flex-wrap: wrap;
+    z-index: 30; display: flex; flex-direction: column; gap: 12px;
+  }
+
+  .mode-row, .settings-row {
+    display: flex; gap: 8px; align-items: center;
+  }
+
+  .settings-row {
+    background: rgba(20,20,20,0.7);
+    padding: 10px; border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
   }
 
   .btn {
-    padding: 10px 16px;
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.15);
-    background: rgba(255,255,255,0.05);
+    padding: 10px 16px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(40,40,40,0.6);
     color: white; cursor: pointer;
-    user-select: none;
-    font-size: 0.9rem;
+    font-size: 0.9rem; transition: 0.2s;
     backdrop-filter: blur(4px);
-    transition: all 0.2s;
   }
   .btn:hover { background: rgba(255,255,255,0.2); }
   .btn.active { 
-    background: #ff4757; 
-    border-color: #ff4757; 
-    box-shadow: 0 0 15px rgba(255, 71, 87, 0.4);
+    background: #6c5ce7; border-color: #6c5ce7; 
+    box-shadow: 0 0 15px rgba(108, 92, 231, 0.4); 
   }
 
-  /* Status Indicator */
-  #status {
+  input[type="color"] {
+    width: 35px; height: 35px; border: none; background: none; cursor: pointer;
+  }
+  input[type="range"] { accent-color: #6c5ce7; cursor: pointer; }
+  label { font-size: 0.8rem; color: #ccc; }
+
+  /* --- Status & Overlay --- */
+  #status-pill {
     position: absolute; top: 20px; right: 20px;
-    color: #ccc; padding: 8px 16px;
-    background: rgba(20,20,20,0.8);
+    background: rgba(20,20,20,0.8); padding: 8px 16px;
+    border-radius: 20px; color: #aaa; font-size: 0.85rem;
     border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px;
-    z-index: 20;
-    font-size: 0.85rem;
-    pointer-events: none;
+    pointer-events: none; transition: 0.3s;
   }
+  #status-pill.active { color: #6c5ce7; border-color: #6c5ce7; box-shadow: 0 0 10px rgba(108,92,231,0.2); }
 
-  /* Bottom Overlay */
   #overlay {
     position: absolute; bottom: 30px; width: 100%;
     text-align: center; color: rgba(255,255,255,0.6);
-    z-index: 10; pointer-events: none;
+    pointer-events: none;
   }
-  #overlay h2 { margin: 0 0 8px 0; font-weight: 300; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 2px; }
-  #overlay p { margin: 0; font-size: 0.95rem; }
-  .highlight { color: #ff4757; font-weight: bold; }
-  .hint { font-size: 0.8rem; opacity: 0.7; margin-top: 5px; display: block; }
+  #overlay h2 { margin: 0 0 5px 0; font-weight: 300; text-transform: uppercase; letter-spacing: 2px; }
+  #overlay p { font-size: 0.9rem; }
+  .emoji-guide { font-size: 1.5rem; letter-spacing: 10px; margin-top: 10px; display: block; filter: grayscale(1); opacity: 0.5; }
 </style>
 
-<!-- MediaPipe Dependencies -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-
-<!-- Three.js with Addons (OrbitControls) -->
 <script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-  }
-}
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
 </script>
 </head>
-
 <body>
 
-<video class="input_video" playsinline></video>
+<video class="input_video" playsinline muted autoplay></video>
 
 <div id="controls">
-  <button id="btnGesture" class="btn active">👐 Gesture Mode</button>
-  <button id="btnUpload"  class="btn">🖼️ Upload Image</button>
-  <button id="btnCamera"  class="btn">📹 Camera Mode</button>
-  <input type="file" id="fileInput" accept="image/*" hidden>
+  <div class="mode-row">
+    <button id="btnAI" class="btn active">🤖 AI Detect</button>
+    <button id="btnCam" class="btn">📹 Live Mirror</button>
+    <button id="btnImg" class="btn">🖼️ Image</button>
+    <input type="file" id="fileInput" accept="image/*" hidden>
+  </div>
+  
+  <div class="settings-row">
+    <label>Color</label>
+    <input type="color" id="colorPicker" value="#6c5ce7">
+    <label>Glow</label>
+    <input type="range" id="brightSlider" min="0.5" max="3" step="0.1" value="1.2">
+    <button id="btnCap" class="btn" title="Screenshot">📷</button>
+  </div>
 </div>
 
-<div id="status">Initializing System...</div>
+<div id="status-pill">System Initializing...</div>
 
 <div id="overlay">
-  <h2 id="modeTitle">Gesture Mode</h2>
-  <p id="modeDesc">Make a <span class="highlight">Heart 🫶</span> with both hands.</p>
-  <span class="hint">🖱️ Click & Drag to Rotate | Scroll to Zoom</span>
+  <h2 id="modeTitle">AI Mode</h2>
+  <p id="modeDesc">I will mimic your hand gestures with particles.</p>
+  <div class="emoji-guide">👍 ✌️ ✋ 👊 ❤️ 🤘</div>
 </div>
 
 <script type="module">
@@ -97,239 +117,204 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 /* ================= CONFIGURATION ================= */
 const CONFIG = {
-  COUNT: 32000,           // Increased count for denser camera view
-  SIZE: 0.20,             // Slightly larger particles to fill gaps
-  LERP: 0.08,             // Animation smoothing
-
-  HEART_COLOR: new THREE.Color(0xff0044),
-  CLOUD_COLOR: new THREE.Color(0x00aaff),
-
-  // Camera/Image Mode Settings
-  SAMPLE_H: 130,          // Vertical resolution sample size
-  CAMERA_FPS: 24,         // Higher update rate
-  DEPTH_SCALE: 10.0,      // Depth pop
-  SPREAD_SCALE: 0.35,     // How spread out the camera pixels are (0.35 fills screen better than 0.15)
-  MIN_LUMA: 0.08          
+  COUNT: 30000,
+  SIZE: 0.22,
+  LERP: 0.08,
+  
+  // Resolution for Emoji/Image sampling
+  CANVAS_W: 150, 
+  CANVAS_H: 150,
+  
+  // Camera Mode
+  CAM_FPS: 30,
+  MIN_LUMA: 0.1,
+  DEPTH_AMT: 8.0
 };
 
-/* ================= STATE ================= */
+// Global State
 const state = {
-  mode: "gesture", // 'gesture', 'image', 'camera'
-  heart: false,
-
-  imageReady: false,
-  imagePos: new Float32Array(CONFIG.COUNT * 3),
-  imageCol: new Float32Array(CONFIG.COUNT * 3),
-
-  // Buffers for Camera Mode
-  camPos: new Float32Array(CONFIG.COUNT * 3),
-  camCol: new Float32Array(CONFIG.COUNT * 3),
-  camParticleOrder: null, 
-  camTimer: null
+  mode: 'ai', // 'ai', 'camera', 'image'
+  currentGesture: 'cloud', // 'cloud', 'thumbs_up', 'victory', etc.
+  
+  // Buffers
+  targetPos: new Float32Array(CONFIG.COUNT * 3),
+  targetCol: new Float32Array(CONFIG.COUNT * 3),
+  
+  // User Settings
+  userColor: new THREE.Color('#6c5ce7'),
+  brightness: 1.2,
+  
+  // Internals
+  camTimer: null,
+  handsReady: false
 };
 
 /* ================= THREE.JS SETUP ================= */
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x050505, 0.015); // Lighter fog for better visibility at distance
+scene.fog = new THREE.FogExp2(0x050505, 0.015);
 
-const camera3D = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1000);
-camera3D.position.z = 40; // Pulled back slightly to fit the larger camera view
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+camera.position.z = 40;
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
 
-// --- ADD ORBIT CONTROLS ---
-const controls = new OrbitControls(camera3D, renderer.domElement);
-controls.enableDamping = true; // Smooth motion
-controls.dampingFactor = 0.05;
-controls.enablePan = true;
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
 controls.rotateSpeed = 0.5;
 
-/* ================= PARTICLES SYSTEM ================= */
+/* ================= PARTICLE SYSTEM ================= */
 const geo = new THREE.BufferGeometry();
 const pos = new Float32Array(CONFIG.COUNT * 3);
-const targetPos = new Float32Array(CONFIG.COUNT * 3);
 const col = new Float32Array(CONFIG.COUNT * 3);
-const targetCol = new Float32Array(CONFIG.COUNT * 3);
 
-// Create soft glow texture
-function makeSpriteTexture() {
-  const c = document.createElement("canvas");
-  c.width = c.height = 32;
-  const g = c.getContext("2d");
-  const grad = g.createRadialGradient(16,16,0,16,16,16);
-  grad.addColorStop(0, "rgba(255,255,255,1)");
-  grad.addColorStop(1, "rgba(0,0,0,0)");
-  g.fillStyle = grad;
-  g.fillRect(0,0,32,32);
-  return new THREE.CanvasTexture(c);
-}
-
-// Initialize Cloud
-for (let i = 0; i < CONFIG.COUNT; i++) {
-  pos[i*3] = (Math.random() - 0.5) * 60;
-  pos[i*3+1] = (Math.random() - 0.5) * 60;
-  pos[i*3+2] = (Math.random() - 0.5) * 60;
-
-  targetPos[i*3] = pos[i*3];
-  targetPos[i*3+1] = pos[i*3+1];
-  targetPos[i*3+2] = pos[i*3+2];
-
-  col[i*3] = CONFIG.CLOUD_COLOR.r;
-  col[i*3+1] = CONFIG.CLOUD_COLOR.g;
-  col[i*3+2] = CONFIG.CLOUD_COLOR.b;
+// Initialize Random Cloud
+for(let i=0; i<CONFIG.COUNT; i++) {
+  pos[i*3] = (Math.random()-0.5)*50;
+  pos[i*3+1] = (Math.random()-0.5)*50;
+  pos[i*3+2] = (Math.random()-0.5)*50;
   
-  targetCol[i*3] = col[i*3];
-  targetCol[i*3+1] = col[i*3+1];
-  targetCol[i*3+2] = col[i*3+2];
+  state.targetPos[i*3] = pos[i*3];
+  state.targetPos[i*3+1] = pos[i*3+1];
+  state.targetPos[i*3+2] = pos[i*3+2];
+  
+  // Default color
+  col[i*3] = state.userColor.r; 
+  col[i*3+1] = state.userColor.g; 
+  col[i*3+2] = state.userColor.b;
 }
 
-geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
+// Texture
+const canvas = document.createElement('canvas'); canvas.width=32; canvas.height=32;
+const ctx = canvas.getContext('2d');
+const grad = ctx.createRadialGradient(16,16,0,16,16,16);
+grad.addColorStop(0, 'rgba(255,255,255,1)');
+grad.addColorStop(1, 'rgba(0,0,0,0)');
+ctx.fillStyle = grad; ctx.fillRect(0,0,32,32);
+const texture = new THREE.CanvasTexture(canvas);
 
 const mat = new THREE.PointsMaterial({
-  size: CONFIG.SIZE,
-  map: makeSpriteTexture(),
-  vertexColors: true,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
-  transparent: true
+  size: CONFIG.SIZE, map: texture,
+  vertexColors: true, blending: THREE.AdditiveBlending,
+  depthWrite: false, transparent: true
 });
+const particles = new THREE.Points(geo, mat);
+scene.add(particles);
 
-const points = new THREE.Points(geo, mat);
-scene.add(points);
-
-/* ================= SHAPE LOGIC ================= */
-function cloudPoint() {
-  const r = 25 * Math.cbrt(Math.random());
-  const t = Math.random() * Math.PI * 2;
-  const p = Math.acos(2 * Math.random() - 1);
-  return {
-    x: r * Math.sin(p) * Math.cos(t),
-    y: r * Math.sin(p) * Math.sin(t),
-    z: r * Math.cos(p)
-  };
-}
-
-function heartPoint(u, v) {
-  const t = u * Math.PI * 2;
-  // Scaled up heart slightly to match new camera zoom
-  const x = 14 * Math.pow(Math.sin(t), 3);
-  const y = 12 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
-  const z = (v - 0.5) * 5;
-  return { x: x * 0.8, y: y * 0.8, z: z };
-}
-
-function genCloudTargets() {
-  for (let i = 0; i < CONFIG.COUNT; i++) {
-    const p = cloudPoint();
-    targetPos[i*3] = p.x; targetPos[i*3+1] = p.y; targetPos[i*3+2] = p.z;
-    targetCol[i*3] = CONFIG.CLOUD_COLOR.r;
-    targetCol[i*3+1] = CONFIG.CLOUD_COLOR.g;
-    targetCol[i*3+2] = CONFIG.CLOUD_COLOR.b;
-  }
-}
-
-function genHeartTargets() {
-  for (let i = 0; i < CONFIG.COUNT; i++) {
-    const p = heartPoint(i / CONFIG.COUNT, Math.random());
-    targetPos[i*3] = p.x + (Math.random()-0.5);
-    targetPos[i*3+1] = p.y + (Math.random()-0.5);
-    targetPos[i*3+2] = p.z + (Math.random()-0.5);
+/* ================= EMOJI & SHAPE ENGINE ================= */
+function generateShapeFromText(char) {
+    const w = CONFIG.CANVAS_W; const h = CONFIG.CANVAS_H;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const cx = c.getContext('2d');
     
-    targetCol[i*3] = CONFIG.HEART_COLOR.r;
-    targetCol[i*3+1] = CONFIG.HEART_COLOR.g;
-    targetCol[i*3+2] = CONFIG.HEART_COLOR.b;
-  }
-}
-
-function genImageTargets() {
-  targetPos.set(state.imagePos);
-  targetCol.set(state.imageCol);
-}
-
-/* ================= IMAGE & CAMERA PROCESSING ================= */
-const videoEl = document.querySelector(".input_video");
-const camCanvas = document.createElement("canvas");
-const camCtx = camCanvas.getContext("2d", { willReadFrequently: true });
-
-function processImage(file) {
-  statusDiv.textContent = "Processing image...";
-  const img = new Image();
-  img.onload = () => {
-    const h = CONFIG.SAMPLE_H;
-    const w = Math.floor(h * (img.width / img.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, 0, 0, w, h);
-    const data = ctx.getImageData(0, 0, w, h).data;
+    cx.font = 'bold 100px Arial';
+    cx.textAlign = 'center';
+    cx.textBaseline = 'middle';
+    cx.fillStyle = 'white';
+    cx.fillText(char, w/2, h/2);
     
-    // Shuffle indices 
-    const order = Array.from({length: CONFIG.COUNT}, (_, i) => i).sort(() => Math.random()-0.5);
+    const data = cx.getImageData(0,0,w,h).data;
+    const validPixels = [];
     
-    let used = 0;
-    for(let i=0; i<w*h && used<CONFIG.COUNT; i++) {
-        const r = data[i*4]/255, g = data[i*4+1]/255, b = data[i*4+2]/255, a = data[i*4+3];
-        if(a < 128) continue;
-        
-        const idx = order[used];
-        const x = (i % w); const y = Math.floor(i / w);
-        
-        // Spread scale applied here
-        state.imagePos[idx*3] = (x - w/2) * CONFIG.SPREAD_SCALE;
-        state.imagePos[idx*3+1] = -(y - h/2) * CONFIG.SPREAD_SCALE;
-        state.imagePos[idx*3+2] = 0;
-        
-        state.imageCol[idx*3] = r; state.imageCol[idx*3+1] = g; state.imageCol[idx*3+2] = b;
-        used++;
+    // Scan for pixels
+    for(let y=0; y<h; y+=2) { // Skip every other pixel for density control
+        for(let x=0; x<w; x+=2) {
+            const idx = (y*w + x)*4;
+            if(data[idx+3] > 128) { // If not transparent
+                validPixels.push({
+                    x: (x - w/2) * 0.35,
+                    y: -(y - h/2) * 0.35,
+                    z: 0
+                });
+            }
+        }
     }
     
-    for(let k=used; k<CONFIG.COUNT; k++) {
-        const idx = order[k];
-        state.imagePos[idx*3] = 2000; // Throw far away
-    }
+    // Assign to particles
+    const indices = Array.from({length: CONFIG.COUNT}, (_,i)=>i).sort(()=>Math.random()-0.5);
+    let pixelIdx = 0;
     
-    state.imageReady = true;
-    setMode("image");
-    statusDiv.textContent = "Image Ready";
-  };
-  img.src = URL.createObjectURL(file);
+    for(let i=0; i<CONFIG.COUNT; i++) {
+        const pIdx = indices[i];
+        const idx3 = pIdx * 3;
+        
+        if(pixelIdx < validPixels.length) {
+            const p = validPixels[pixelIdx];
+            state.targetPos[idx3] = p.x;
+            state.targetPos[idx3+1] = p.y;
+            state.targetPos[idx3+2] = p.z;
+            pixelIdx++;
+        } else {
+            // Excess particles float in background
+            const angle = Math.random()*Math.PI*2;
+            const r = 25 + Math.random()*10;
+            state.targetPos[idx3] = Math.cos(angle)*r;
+            state.targetPos[idx3+1] = Math.sin(angle)*r;
+            state.targetPos[idx3+2] = (Math.random()-0.5)*20;
+        }
+        
+        // Update Color Target (Use User Color)
+        state.targetCol[idx3] = state.userColor.r;
+        state.targetCol[idx3+1] = state.userColor.g;
+        state.targetCol[idx3+2] = state.userColor.b;
+    }
 }
 
-function ensureCameraOrder(pixelCount) {
-  if (state.camParticleOrder && state.camParticleOrder.length === pixelCount) return;
-  const order = new Uint32Array(pixelCount);
-  for(let i=0; i<pixelCount; i++) order[i] = i;
-  for(let i=pixelCount-1; i>0; i--) {
-      const j = Math.floor(Math.random() * (i+1));
-      [order[i], order[j]] = [order[j], order[i]];
-  }
-  state.camParticleOrder = order;
+function generateCloud() {
+    for(let i=0; i<CONFIG.COUNT; i++) {
+        const idx3 = i*3;
+        const r = 30 * Math.cbrt(Math.random());
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        
+        state.targetPos[idx3] = r * Math.sin(phi) * Math.cos(theta);
+        state.targetPos[idx3+1] = r * Math.sin(phi) * Math.sin(theta);
+        state.targetPos[idx3+2] = r * Math.cos(phi);
+        
+        state.targetCol[idx3] = state.userColor.r;
+        state.targetCol[idx3+1] = state.userColor.g;
+        state.targetCol[idx3+2] = state.userColor.b;
+    }
 }
 
-function updateCameraTargets() {
+/* ================= LIVE CAMERA LOGIC ================= */
+const videoEl = document.querySelector('.input_video');
+const camC = document.createElement('canvas');
+const camCtx = camC.getContext('2d', {willReadFrequently:true});
+
+function updateLiveCamera() {
     if(state.mode !== 'camera' || !videoEl.videoWidth) return;
     
-    const h = CONFIG.SAMPLE_H;
-    const w = Math.floor(h * (videoEl.videoWidth / videoEl.videoHeight));
-    camCanvas.width = w; camCanvas.height = h;
-    camCtx.drawImage(videoEl, 0, 0, w, h);
-    const data = camCtx.getImageData(0, 0, w, h).data;
-    const count = w * h;
+    const h = 130; // Resolution
+    const w = Math.floor(h * (videoEl.videoWidth/videoEl.videoHeight));
+    camC.width=w; camC.height=h;
     
-    ensureCameraOrder(count);
-    const order = state.camParticleOrder;
+    // Draw flipped for mirror effect (scale x -1)
+    camCtx.save();
+    camCtx.scale(-1, 1);
+    camCtx.drawImage(videoEl, -w, 0, w, h);
+    camCtx.restore();
+    
+    const data = camCtx.getImageData(0,0,w,h).data;
+    const totalPixels = w*h;
+    
+    // Stable random mapping
+    if(!state.camOrder || state.camOrder.length !== totalPixels) {
+        state.camOrder = new Uint32Array(totalPixels);
+        for(let i=0; i<totalPixels; i++) state.camOrder[i] = i;
+        for(let i=totalPixels-1; i>0; i--) {
+            const j = Math.floor(Math.random()*(i+1));
+            [state.camOrder[i], state.camOrder[j]] = [state.camOrder[j], state.camOrder[i]];
+        }
+    }
     
     let used = 0;
-    const limit = Math.min(count, CONFIG.COUNT);
-    
-    for(let i=0; i<count && used < limit; i++) {
-        const idx = order[i];
-        if(idx >= CONFIG.COUNT) continue;
-        
+    for(let i=0; i<totalPixels && used<CONFIG.COUNT; i++) {
+        const pIdx = state.camOrder[i];
         const r = data[i*4]/255;
         const g = data[i*4+1]/255;
         const b = data[i*4+2]/255;
@@ -337,137 +322,281 @@ function updateCameraTargets() {
         
         if(luma < CONFIG.MIN_LUMA) continue;
         
-        const x = i % w;
-        const y = Math.floor(i / w);
+        const x = i % w; const y = Math.floor(i/w);
+        const idx3 = pIdx*3;
         
-        // --- SCALE INCREASED HERE ---
-        state.camPos[idx*3] = (x - w/2) * CONFIG.SPREAD_SCALE;
-        state.camPos[idx*3+1] = -(y - h/2) * CONFIG.SPREAD_SCALE;
-        state.camPos[idx*3+2] = (luma - 0.5) * CONFIG.DEPTH_SCALE;
+        state.targetPos[idx3] = (x - w/2) * 0.35;
+        state.targetPos[idx3+1] = -(y - h/2) * 0.35;
+        state.targetPos[idx3+2] = (luma - 0.5) * CONFIG.DEPTH_AMT; // 3D Depth
         
-        state.camCol[idx*3] = r; state.camCol[idx*3+1] = g; state.camCol[idx*3+2] = b;
+        // In Camera mode, we use the actual camera colors
+        state.targetCol[idx3] = r; 
+        state.targetCol[idx3+1] = g; 
+        state.targetCol[idx3+2] = b;
+        
         used++;
     }
     
+    // Hide rest
     for(let k=used; k<CONFIG.COUNT; k++) {
-        state.camPos[k*3] = 2000;
-    }
-    
-    targetPos.set(state.camPos);
-    targetCol.set(state.camCol);
-}
-
-/* ================= UI LOGIC ================= */
-const btnGesture = document.getElementById("btnGesture");
-const btnUpload = document.getElementById("btnUpload");
-const btnCamera = document.getElementById("btnCamera");
-const fileInput = document.getElementById("fileInput");
-const statusDiv = document.getElementById("status");
-const modeTitle = document.getElementById("modeTitle");
-const modeDesc = document.getElementById("modeDesc");
-
-function setMode(m) {
-    state.mode = m;
-    
-    [btnGesture, btnUpload, btnCamera].forEach(b => b.classList.remove('active'));
-    if(m === 'gesture') btnGesture.classList.add('active');
-    if(m === 'image') btnUpload.classList.add('active');
-    if(m === 'camera') btnCamera.classList.add('active');
-    
-    if(state.camTimer) clearInterval(state.camTimer);
-    
-    // Reset camera position slightly when switching modes for better framing
-    if(m === 'gesture') {
-        controls.autoRotate = false; // Ensure no auto rotate
-        controls.reset();
-        camera3D.position.set(0,0,40); // Reset distance
-        
-        modeTitle.textContent = "Gesture Mode";
-        modeDesc.innerHTML = "Make a <span class='highlight'>Heart 🫶</span> with both hands.";
-        statusDiv.style.opacity = 1;
-        statusDiv.textContent = "Waiting for hands...";
-        genCloudTargets();
-    } else if (m === 'image') {
-        modeTitle.textContent = "Image Mode";
-        modeDesc.textContent = "Particles reconstruct your static image.";
-        statusDiv.style.opacity = 0;
-        if(state.imageReady) genImageTargets();
-    } else if (m === 'camera') {
-        modeTitle.textContent = "Camera Mode";
-        modeDesc.textContent = "Live 3D reconstruction of webcam feed.";
-        statusDiv.style.opacity = 0;
-        state.camTimer = setInterval(updateCameraTargets, 1000/CONFIG.CAMERA_FPS);
+        state.targetPos[state.camOrder? state.camOrder[k]*3 : k*3] = 1000;
     }
 }
 
-btnGesture.onclick = () => setMode('gesture');
-btnCamera.onclick = () => setMode('camera');
-btnUpload.onclick = () => fileInput.click();
-fileInput.onchange = (e) => { if(e.target.files[0]) processImage(e.target.files[0]); };
+/* ================= AI GESTURE RECOGNITION ================= */
+// Simple rule-based recognizer
+function detectGesture(landmarks) {
+    const isExtended = (hand, fingerTip, fingerPip) => {
+        return Math.hypot(hand[fingerTip].x - hand[0].x, hand[fingerTip].y - hand[0].y) > 
+               Math.hypot(hand[fingerPip].x - hand[0].x, hand[fingerPip].y - hand[0].y);
+    };
 
-/* ================= MEDIAPIPE ================= */
-const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-hands.setOptions({ maxNumHands: 2, minDetectionConfidence: 0.5 });
-hands.onResults((r) => {
-    if(state.mode !== 'gesture') return;
-    
-    let isHeart = false;
-    if(r.multiHandLandmarks && r.multiHandLandmarks.length === 2) {
-        const h1 = r.multiHandLandmarks[0];
-        const h2 = r.multiHandLandmarks[1];
+    // 1. Check for Heart (Two hands needed)
+    if(landmarks.length === 2) {
+        const h1 = landmarks[0]; const h2 = landmarks[1];
         const idxDist = Math.hypot(h1[8].x - h2[8].x, h1[8].y - h2[8].y);
         const thumbDist = Math.hypot(h1[4].x - h2[4].x, h1[4].y - h2[4].y);
-        if(idxDist < 0.08 && thumbDist < 0.08) isHeart = true;
+        if(idxDist < 0.15 && thumbDist < 0.15) return 'heart';
     }
+
+    // 2. Single Hand Gestures (Take the first hand)
+    const h = landmarks[0];
+    const thumbExt = isExtended(h, 4, 2);
+    const indexExt = isExtended(h, 8, 6);
+    const midExt = isExtended(h, 12, 10);
+    const ringExt = isExtended(h, 16, 14);
+    const pinkyExt = isExtended(h, 20, 18);
+
+    if (thumbExt && !indexExt && !midExt && !ringExt && !pinkyExt) return 'thumbs_up';
+    if (!thumbExt && indexExt && midExt && !ringExt && !pinkyExt) return 'victory';
+    if (!thumbExt && indexExt && !midExt && !ringExt && pinkyExt) return 'rock';
+    if (!thumbExt && !indexExt && !midExt && !ringExt && !pinkyExt) return 'fist';
+    if (indexExt && midExt && ringExt && pinkyExt) return 'open';
     
-    if(isHeart !== state.heart) {
-        state.heart = isHeart;
-        if(isHeart) {
-            statusDiv.textContent = "HEART DETECTED ❤️";
-            statusDiv.style.color = "#ff4757";
-            genHeartTargets();
-        } else {
-            statusDiv.textContent = "Hands separated";
-            statusDiv.style.color = "#ccc";
-            genCloudTargets();
+    return 'cloud';
+}
+
+// MediaPipe Setup
+const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+hands.setOptions({maxNumHands: 2, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+
+hands.onResults((r) => {
+    if(!state.handsReady) {
+        state.handsReady = true;
+        document.getElementById('status-pill').textContent = "Camera Ready";
+    }
+
+    if(state.mode === 'ai') {
+        let detected = 'cloud';
+        if(r.multiHandLandmarks && r.multiHandLandmarks.length > 0) {
+            detected = detectGesture(r.multiHandLandmarks);
+        }
+        
+        if(detected !== state.currentGesture) {
+            state.currentGesture = detected;
+            
+            // Trigger Shape Change
+            const pill = document.getElementById('status-pill');
+            
+            switch(detected) {
+                case 'thumbs_up': 
+                    generateShapeFromText('👍'); 
+                    pill.textContent = "Detected: Thumbs Up";
+                    break;
+                case 'victory': 
+                    generateShapeFromText('✌️'); 
+                    pill.textContent = "Detected: Victory";
+                    break;
+                case 'open': 
+                    generateShapeFromText('✋'); 
+                    pill.textContent = "Detected: Open Hand";
+                    break;
+                case 'fist': 
+                    generateShapeFromText('👊'); 
+                    pill.textContent = "Detected: Fist";
+                    break;
+                case 'heart': 
+                    generateShapeFromText('❤️'); 
+                    pill.textContent = "Detected: Heart";
+                    break;
+                case 'rock': 
+                    generateShapeFromText('🤘'); 
+                    pill.textContent = "Detected: Rock On";
+                    break;
+                default: 
+                    generateCloud(); 
+                    pill.textContent = "Waiting for gesture...";
+            }
+            pill.classList.add('active');
+            setTimeout(()=>pill.classList.remove('active'), 500);
         }
     }
 });
 
-const mpCam = new Camera(videoEl, {
-    onFrame: async () => { await hands.send({image: videoEl}); },
-    width: 640, height: 480
-});
-mpCam.start();
 
-/* ================= LOOP ================= */
-function animate() {
-    requestAnimationFrame(animate);
-    
-    // Update OrbitControls
-    controls.update();
+/* ================= UI & LOGIC ================= */
+const statusPill = document.getElementById('status-pill');
+const colorPicker = document.getElementById('colorPicker');
 
-    // Lerp positions
-    for(let i=0; i<CONFIG.COUNT * 3; i++) {
-        pos[i] += (targetPos[i] - pos[i]) * CONFIG.LERP;
-        col[i] += (targetCol[i] - col[i]) * 0.05;
+// Color Logic
+colorPicker.addEventListener('input', (e) => {
+    state.userColor.set(e.target.value);
+    if(state.mode === 'ai') {
+        for(let i=0; i<CONFIG.COUNT; i++) {
+            state.targetCol[i*3] = state.userColor.r;
+            state.targetCol[i*3+1] = state.userColor.g;
+            state.targetCol[i*3+2] = state.userColor.b;
+        }
     }
+});
+
+document.getElementById('brightSlider').addEventListener('input', (e) => {
+    state.brightness = parseFloat(e.target.value);
+});
+
+// FIXED: Mode Switching
+const setMode = (m) => {
+    state.mode = m;
+    clearInterval(state.camTimer);
     
-    // Removed automatic rotation line: scene.rotation.y += ...
+    document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
     
-    geo.attributes.position.needsUpdate = true;
-    geo.attributes.color.needsUpdate = true;
-    renderer.render(scene, camera3D);
+    const title = document.getElementById('modeTitle');
+    const desc = document.getElementById('modeDesc');
+    const guide = document.querySelector('.emoji-guide');
+
+    if(m === 'ai') {
+        document.getElementById('btnAI').classList.add('active');
+        title.innerText = "AI Mode";
+        desc.innerText = "Make a gesture (👍 ✌️ ✋ 👊 ❤️ 🤘)";
+        guide.style.display = "block";
+        controls.reset();
+        camera.position.z = 40;
+        generateCloud();
+        
+        // Kickstart the manual loop
+        runAIDetection();
+    } else if (m === 'camera') {
+        document.getElementById('btnCam').classList.add('active');
+        title.innerText = "Live Mirror";
+        desc.innerText = "You are the particles.";
+        guide.style.display = "none";
+        state.camTimer = setInterval(updateLiveCamera, 1000/CONFIG.CAM_FPS);
+    } else if (m === 'image') {
+        document.getElementById('btnImg').classList.add('active');
+        document.getElementById('fileInput').click();
+        title.innerText = "Image Mode";
+        desc.innerText = "Static Reconstruction";
+        guide.style.display = "none";
+    }
 }
 
+document.getElementById('btnAI').onclick = () => setMode('ai');
+document.getElementById('btnCam').onclick = () => setMode('camera');
+document.getElementById('btnImg').onclick = () => setMode('image');
+
+document.getElementById('fileInput').onchange = (e) => {
+    if(!e.target.files[0]) return;
+    const url = URL.createObjectURL(e.target.files[0]);
+    const img = new Image();
+    img.onload = () => {
+        const c = document.createElement('canvas');
+        const r = CONFIG.CANVAS_W / img.width;
+        c.width = CONFIG.CANVAS_W; c.height = img.height * r;
+        const cx = c.getContext('2d'); cx.drawImage(img, 0, 0, c.width, c.height);
+        const data = cx.getImageData(0,0,c.width,c.height).data;
+        
+        const indices = Array.from({length: CONFIG.COUNT}, (_,i)=>i).sort(()=>Math.random()-0.5);
+        let used = 0;
+        for(let i=0; i<c.width*c.height && used<CONFIG.COUNT; i++) {
+            const r=data[i*4]/255, g=data[i*4+1]/255, b=data[i*4+2]/255, a=data[i*4+3];
+            if(a>128) {
+                const idx = indices[used];
+                const x = i%c.width; const y = Math.floor(i/c.width);
+                state.targetPos[idx*3] = (x - c.width/2)*0.35;
+                state.targetPos[idx*3+1] = -(y - c.height/2)*0.35;
+                state.targetPos[idx*3+2] = 0;
+                
+                state.targetCol[idx*3] = r; state.targetCol[idx*3+1] = g; state.targetCol[idx*3+2] = b;
+                used++;
+            }
+        }
+        for(let k=used; k<CONFIG.COUNT; k++) state.targetPos[indices[k]*3] = 1000;
+        document.getElementById('btnImg').classList.add('active');
+    };
+    img.src = url;
+};
+
+document.getElementById('btnCap').onclick = () => {
+    renderer.render(scene, camera);
+    const a = document.createElement('a');
+    a.download = 'particles_ai.png';
+    a.href = renderer.domElement.toDataURL('image/png');
+    a.click();
+};
+
+/* ================= CAMERA STARTUP & LOOPS ================= */
+
+// 1. Initialize Camera (Just to start the stream)
+const camObj = new Camera(videoEl, {
+    onFrame: async () => {}, // We do not use this loop.
+    width: 640, height: 480
+});
+camObj.start();
+
+// 2. Manual AI Loop (Decoupled from Camera Utility)
+let isDetecting = false;
+async function runAIDetection() {
+    if(state.mode === 'ai' && videoEl.readyState === 4 && !isDetecting) {
+        isDetecting = true;
+        try { await hands.send({image: videoEl}); } 
+        catch(e) { console.error(e); }
+        isDetecting = false;
+    }
+    if(state.mode === 'ai') {
+        setTimeout(() => requestAnimationFrame(runAIDetection), 30);
+    }
+}
+
+// 3. Animation Loop
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    
+    const brightness = state.brightness;
+    const posAttr = geo.attributes.position;
+    const colAttr = geo.attributes.color;
+
+    for(let i=0; i<CONFIG.COUNT; i++) {
+        const idx3 = i*3;
+        
+        pos[idx3] += (state.targetPos[idx3] - pos[idx3]) * CONFIG.LERP;
+        pos[idx3+1] += (state.targetPos[idx3+1] - pos[idx3+1]) * CONFIG.LERP;
+        pos[idx3+2] += (state.targetPos[idx3+2] - pos[idx3+2]) * CONFIG.LERP;
+        
+        col[idx3] += (state.targetCol[idx3] - col[idx3]) * 0.1;
+        col[idx3+1] += (state.targetCol[idx3+1] - col[idx3+1]) * 0.1;
+        col[idx3+2] += (state.targetCol[idx3+2] - col[idx3+2]) * 0.1;
+        
+        colAttr.array[idx3] = Math.min(1, col[idx3] * brightness);
+        colAttr.array[idx3+1] = Math.min(1, col[idx3+1] * brightness);
+        colAttr.array[idx3+2] = Math.min(1, col[idx3+2] * brightness);
+    }
+    
+    posAttr.needsUpdate = true;
+    colAttr.needsUpdate = true;
+    
+    renderer.render(scene, camera);
+}
+
+// Start
+if(state.mode === 'ai') runAIDetection();
 animate();
 
 window.onresize = () => {
-    camera3D.aspect = innerWidth/innerHeight;
-    camera3D.updateProjectionMatrix();
+    camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
 };
-
 </script>
 </body>
 </html>
