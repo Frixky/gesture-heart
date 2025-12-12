@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Particles: Gesture / Image / Live Camera</title>
+<title>Interactive Particles</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
@@ -54,17 +54,19 @@
   #overlay h2 { margin: 0 0 8px 0; font-weight: 300; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 2px; }
   #overlay p { margin: 0; font-size: 0.95rem; }
   .highlight { color: #ff4757; font-weight: bold; }
+  .hint { font-size: 0.8rem; opacity: 0.7; margin-top: 5px; display: block; }
 </style>
 
 <!-- MediaPipe Dependencies -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 
-<!-- Three.js -->
+<!-- Three.js with Addons (OrbitControls) -->
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
   }
 }
 </script>
@@ -86,25 +88,28 @@
 <div id="overlay">
   <h2 id="modeTitle">Gesture Mode</h2>
   <p id="modeDesc">Make a <span class="highlight">Heart 🫶</span> with both hands.</p>
+  <span class="hint">🖱️ Click & Drag to Rotate | Scroll to Zoom</span>
 </div>
 
 <script type="module">
 import * as THREE from "three";
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 /* ================= CONFIGURATION ================= */
 const CONFIG = {
-  COUNT: 28000,           // Total particle count
-  SIZE: 0.14,             // Particle size
+  COUNT: 32000,           // Increased count for denser camera view
+  SIZE: 0.20,             // Slightly larger particles to fill gaps
   LERP: 0.08,             // Animation smoothing
 
   HEART_COLOR: new THREE.Color(0xff0044),
   CLOUD_COLOR: new THREE.Color(0x00aaff),
 
   // Camera/Image Mode Settings
-  SAMPLE_H: 140,          // Vertical resolution for sampling (lower = faster)
-  CAMERA_FPS: 20,         // Update rate for camera pixel analysis
-  DEPTH_SCALE: 8.0,       // How much "pop" the 3D effect has
-  MIN_LUMA: 0.08          // Filter out dark background noise
+  SAMPLE_H: 130,          // Vertical resolution sample size
+  CAMERA_FPS: 24,         // Higher update rate
+  DEPTH_SCALE: 10.0,      // Depth pop
+  SPREAD_SCALE: 0.35,     // How spread out the camera pixels are (0.35 fills screen better than 0.15)
+  MIN_LUMA: 0.08          
 };
 
 /* ================= STATE ================= */
@@ -119,21 +124,28 @@ const state = {
   // Buffers for Camera Mode
   camPos: new Float32Array(CONFIG.COUNT * 3),
   camCol: new Float32Array(CONFIG.COUNT * 3),
-  camParticleOrder: null, // Stable ID mapping
+  camParticleOrder: null, 
   camTimer: null
 };
 
 /* ================= THREE.JS SETUP ================= */
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x050505, 0.02);
+scene.fog = new THREE.FogExp2(0x050505, 0.015); // Lighter fog for better visibility at distance
 
 const camera3D = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1000);
-camera3D.position.z = 30;
+camera3D.position.z = 40; // Pulled back slightly to fit the larger camera view
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
+
+// --- ADD ORBIT CONTROLS ---
+const controls = new OrbitControls(camera3D, renderer.domElement);
+controls.enableDamping = true; // Smooth motion
+controls.dampingFactor = 0.05;
+controls.enablePan = true;
+controls.rotateSpeed = 0.5;
 
 /* ================= PARTICLES SYSTEM ================= */
 const geo = new THREE.BufferGeometry();
@@ -157,9 +169,9 @@ function makeSpriteTexture() {
 
 // Initialize Cloud
 for (let i = 0; i < CONFIG.COUNT; i++) {
-  pos[i*3] = (Math.random() - 0.5) * 50;
-  pos[i*3+1] = (Math.random() - 0.5) * 50;
-  pos[i*3+2] = (Math.random() - 0.5) * 50;
+  pos[i*3] = (Math.random() - 0.5) * 60;
+  pos[i*3+1] = (Math.random() - 0.5) * 60;
+  pos[i*3+2] = (Math.random() - 0.5) * 60;
 
   targetPos[i*3] = pos[i*3];
   targetPos[i*3+1] = pos[i*3+1];
@@ -191,7 +203,7 @@ scene.add(points);
 
 /* ================= SHAPE LOGIC ================= */
 function cloudPoint() {
-  const r = 20 * Math.cbrt(Math.random());
+  const r = 25 * Math.cbrt(Math.random());
   const t = Math.random() * Math.PI * 2;
   const p = Math.acos(2 * Math.random() - 1);
   return {
@@ -203,8 +215,9 @@ function cloudPoint() {
 
 function heartPoint(u, v) {
   const t = u * Math.PI * 2;
-  const x = 12 * Math.pow(Math.sin(t), 3);
-  const y = 10 * Math.cos(t) - 4 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+  // Scaled up heart slightly to match new camera zoom
+  const x = 14 * Math.pow(Math.sin(t), 3);
+  const y = 12 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
   const z = (v - 0.5) * 5;
   return { x: x * 0.8, y: y * 0.8, z: z };
 }
@@ -254,7 +267,7 @@ function processImage(file) {
     ctx.drawImage(img, 0, 0, w, h);
     const data = ctx.getImageData(0, 0, w, h).data;
     
-    // Shuffle indices for smooth "materialization"
+    // Shuffle indices 
     const order = Array.from({length: CONFIG.COUNT}, (_, i) => i).sort(() => Math.random()-0.5);
     
     let used = 0;
@@ -265,18 +278,18 @@ function processImage(file) {
         const idx = order[used];
         const x = (i % w); const y = Math.floor(i / w);
         
-        state.imagePos[idx*3] = (x - w/2) * 0.15;
-        state.imagePos[idx*3+1] = -(y - h/2) * 0.15;
+        // Spread scale applied here
+        state.imagePos[idx*3] = (x - w/2) * CONFIG.SPREAD_SCALE;
+        state.imagePos[idx*3+1] = -(y - h/2) * CONFIG.SPREAD_SCALE;
         state.imagePos[idx*3+2] = 0;
         
         state.imageCol[idx*3] = r; state.imageCol[idx*3+1] = g; state.imageCol[idx*3+2] = b;
         used++;
     }
     
-    // Hide unused
     for(let k=used; k<CONFIG.COUNT; k++) {
         const idx = order[k];
-        state.imagePos[idx*3] = 1000;
+        state.imagePos[idx*3] = 2000; // Throw far away
     }
     
     state.imageReady = true;
@@ -286,7 +299,6 @@ function processImage(file) {
   img.src = URL.createObjectURL(file);
 }
 
-// Ensure stable random mapping for camera
 function ensureCameraOrder(pixelCount) {
   if (state.camParticleOrder && state.camParticleOrder.length === pixelCount) return;
   const order = new Uint32Array(pixelCount);
@@ -328,18 +340,17 @@ function updateCameraTargets() {
         const x = i % w;
         const y = Math.floor(i / w);
         
-        state.camPos[idx*3] = (x - w/2) * 0.15;
-        state.camPos[idx*3+1] = -(y - h/2) * 0.15;
-        // 3D Depth Logic based on brightness
+        // --- SCALE INCREASED HERE ---
+        state.camPos[idx*3] = (x - w/2) * CONFIG.SPREAD_SCALE;
+        state.camPos[idx*3+1] = -(y - h/2) * CONFIG.SPREAD_SCALE;
         state.camPos[idx*3+2] = (luma - 0.5) * CONFIG.DEPTH_SCALE;
         
         state.camCol[idx*3] = r; state.camCol[idx*3+1] = g; state.camCol[idx*3+2] = b;
         used++;
     }
     
-    // "Hide" the rest smoothly by pushing them far back
     for(let k=used; k<CONFIG.COUNT; k++) {
-        state.camPos[k*3] = 999;
+        state.camPos[k*3] = 2000;
     }
     
     targetPos.set(state.camPos);
@@ -358,16 +369,19 @@ const modeDesc = document.getElementById("modeDesc");
 function setMode(m) {
     state.mode = m;
     
-    // Update Buttons
     [btnGesture, btnUpload, btnCamera].forEach(b => b.classList.remove('active'));
     if(m === 'gesture') btnGesture.classList.add('active');
     if(m === 'image') btnUpload.classList.add('active');
     if(m === 'camera') btnCamera.classList.add('active');
     
-    // Stop Camera Timer
     if(state.camTimer) clearInterval(state.camTimer);
     
+    // Reset camera position slightly when switching modes for better framing
     if(m === 'gesture') {
+        controls.autoRotate = false; // Ensure no auto rotate
+        controls.reset();
+        camera3D.position.set(0,0,40); // Reset distance
+        
         modeTitle.textContent = "Gesture Mode";
         modeDesc.innerHTML = "Make a <span class='highlight'>Heart 🫶</span> with both hands.";
         statusDiv.style.opacity = 1;
@@ -430,14 +444,16 @@ mpCam.start();
 function animate() {
     requestAnimationFrame(animate);
     
+    // Update OrbitControls
+    controls.update();
+
     // Lerp positions
     for(let i=0; i<CONFIG.COUNT * 3; i++) {
         pos[i] += (targetPos[i] - pos[i]) * CONFIG.LERP;
         col[i] += (targetCol[i] - col[i]) * 0.05;
     }
     
-    // Slight rotation
-    scene.rotation.y += 0.001;
+    // Removed automatic rotation line: scene.rotation.y += ...
     
     geo.attributes.position.needsUpdate = true;
     geo.attributes.color.needsUpdate = true;
